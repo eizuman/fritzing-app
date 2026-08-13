@@ -61,7 +61,23 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw "Could not download Boost 1.85.0."
           }
-          Expand-Archive $boostArchive -DestinationPath $root
+
+          $boostExtract = "$env:RUNNER_TEMP\boost-extract"
+          Expand-Archive $boostArchive -DestinationPath $boostExtract
+
+          $boostVersion = Get-ChildItem $boostExtract -Recurse -Filter version.hpp |
+            Where-Object { $_.FullName -like "*\boost\version.hpp" } |
+            Select-Object -First 1
+          if (-not $boostVersion) {
+            throw "Boost archive does not contain boost/version.hpp."
+          }
+
+          $boostSource = $boostVersion.Directory.Parent.FullName
+          $boostDestination = "$root\boost_1_85_0"
+          Move-Item $boostSource $boostDestination
+          if (-not (Test-Path "$boostDestination\boost\version.hpp")) {
+            throw "Boost was not placed in the expected directory."
+          }
 
           git clone --depth 1 --branch develop `
             https://github.com/fritzing/fritzing-parts.git `
@@ -229,7 +245,8 @@ jobs:
       - name: Build Fritzing
         shell: pwsh
         run: |
-          qmake phoenix.pro "QMAKE_TARGET.arch=x86_64"
+          $boostRoot = (Resolve-Path "$env:GITHUB_WORKSPACE\..\..\boost_1_85_0").Path -replace "\\", "/"
+          qmake phoenix.pro "QMAKE_TARGET.arch=x86_64" "boost_root=$boostRoot"
           if ($LASTEXITCODE -ne 0) {
             throw "Fritzing qmake configuration failed."
           }
