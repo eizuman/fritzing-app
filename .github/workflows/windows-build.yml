@@ -45,23 +45,37 @@ jobs:
           & "C:\vcpkg\vcpkg.exe" install `
             libgit2:x64-windows `
             zlib:x64-windows
+          if ($LASTEXITCODE -ne 0) {
+            throw "vcpkg dependency installation failed."
+          }
 
       - name: Download header-only and source dependencies
         shell: pwsh
         run: |
           $root = (Resolve-Path "$env:GITHUB_WORKSPACE\..\..").Path
 
-          git clone --depth 1 --branch boost-1.85.0 `
-            https://github.com/boostorg/boost.git `
-            "$root\boost_1_85_0"
+          $boostArchive = "$env:RUNNER_TEMP\boost_1_85_0.zip"
+          & curl.exe --fail --location --retry 3 `
+            --output $boostArchive `
+            https://archives.boost.io/release/1.85.0/source/boost_1_85_0.zip
+          if ($LASTEXITCODE -ne 0) {
+            throw "Could not download Boost 1.85.0."
+          }
+          Expand-Archive $boostArchive -DestinationPath $root
 
           git clone --depth 1 --branch develop `
             https://github.com/fritzing/fritzing-parts.git `
             "$root\fritzing-parts"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Could not clone fritzing-parts."
+          }
 
           git clone --depth 1 --branch v1.3.1 `
             https://github.com/svgpp/svgpp.git `
             "$root\svgpp-1.3.1"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Could not clone SVG++ 1.3.1."
+          }
 
       - name: Build QuaZip against installed Qt
         shell: pwsh
@@ -73,6 +87,9 @@ jobs:
 
           git clone --depth 1 --branch v1.4 `
             https://github.com/stachenov/quazip.git $source
+          if ($LASTEXITCODE -ne 0) {
+            throw "Could not clone QuaZip 1.4."
+          }
 
           cmake -S $source -B $build `
             -DQUAZIP_QT_MAJOR_VERSION=6 `
@@ -80,9 +97,19 @@ jobs:
             -DQUAZIP_BZIP2=OFF `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR;C:\vcpkg\installed\x64-windows"
+          if ($LASTEXITCODE -ne 0) {
+            throw "QuaZip configuration failed."
+          }
 
           cmake --build $build --config Release --parallel
+          if ($LASTEXITCODE -ne 0) {
+            throw "QuaZip build failed."
+          }
+
           cmake --install $build --config Release --prefix $prefix
+          if ($LASTEXITCODE -ne 0) {
+            throw "QuaZip installation failed."
+          }
 
       - name: Prepare Clipper 6.4.2
         shell: pwsh
@@ -93,6 +120,9 @@ jobs:
 
           git clone --depth 1 --branch 6.4.2 `
             https://github.com/skyrpex/clipper.git $source
+          if ($LASTEXITCODE -ne 0) {
+            throw "Could not clone Clipper 6.4.2."
+          }
 
           $cpp = "$source\cpp\clipper.cpp"
           $header = "$source\cpp\clipper.hpp"
@@ -104,9 +134,16 @@ jobs:
           cl /nologo /std:c++20 /EHsc /O2 /c $cpp `
             /I "$source\cpp" `
             /Fo"$env:RUNNER_TEMP\polyclipping.obj"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Clipper compilation failed."
+          }
+
           lib /nologo `
             /OUT:"$destination\lib\polyclipping.lib" `
             "$env:RUNNER_TEMP\polyclipping.obj"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Clipper library creation failed."
+          }
 
       - name: Prepare ngspice 42
         shell: pwsh
@@ -144,28 +181,35 @@ jobs:
           }
 
           & 7z x $archive "-o$extract" -y
+          if ($LASTEXITCODE -ne 0) {
+            throw "Could not extract ngspice 42."
+          }
 
           $header = Get-ChildItem $extract -Recurse -Filter sharedspice.h |
             Select-Object -First 1
           $dll = Get-ChildItem $extract -Recurse -Filter ngspice.dll |
             Select-Object -First 1
+          $analogModel = Get-ChildItem $extract -Recurse -Filter analog.cm |
+            Select-Object -First 1
 
-          if (-not $header -or -not $dll) {
-            throw "ngspice 42 headers or DLL were not found."
+          if (-not $header -or -not $dll -or -not $analogModel) {
+            throw "ngspice 42 headers, DLL, or code models were not found."
           }
 
           New-Item -ItemType Directory -Force `
-            -Path "$destination\include", "$destination\bin" | Out-Null
+            -Path "$destination\include", "$destination\bin\ngspice" | Out-Null
 
           Copy-Item "$($header.Directory.Parent.FullName)\*" `
             "$destination\include" -Recurse -Force
-          Copy-Item $dll.FullName "$destination\bin\ngspice.dll""
+          Copy-Item $dll.FullName "$destination\bin\ngspice.dll"
+          Copy-Item "$($analogModel.Directory.FullName)\*" `
+            "$destination\bin\ngspice" -Recurse -Force
 
       - name: Adapt dependency paths for GitHub runner
         shell: pwsh
         run: |
           @'
-          VCPKG = $$(VCPKG_ROOT)/installed/x64-windows
+          VCPKG = C:/vcpkg/installed/x64-windows
 
           win32 {
               INCLUDEPATH += $$VCPKG/include
@@ -186,7 +230,14 @@ jobs:
         shell: pwsh
         run: |
           qmake phoenix.pro "QMAKE_TARGET.arch=x86_64"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Fritzing qmake configuration failed."
+          }
+
           nmake release
+          if ($LASTEXITCODE -ne 0) {
+            throw "Fritzing compilation failed."
+          }
 
       - name: Assemble portable application
         shell: pwsh
@@ -203,6 +254,7 @@ jobs:
           Copy-Item "help" "$package\help" -Recurse
           Copy-Item "$root\fritzing-parts" "$package\fritzing-parts" -Recurse
           Copy-Item "$root\ngspice-42\bin\ngspice.dll" $package
+          Copy-Item "$root\ngspice-42\bin\ngspice" "$package\ngspice" -Recurse
           Copy-Item "$root\quazip-1.4\bin\quazip1-qt6.dll" $package
 
           windeployqt "$package\Fritzing.exe" `
@@ -211,12 +263,23 @@ jobs:
             --no-translations `
             --no-system-d3d-compiler `
             --no-opengl-sw
+          if ($LASTEXITCODE -ne 0) {
+            throw "Qt runtime deployment failed."
+          }
 
           Copy-Item "C:\vcpkg\installed\x64-windows\bin\*.dll" `
             $package -Force
 
           Copy-Item "README.md", "INSTALL.txt", "LICENSE.GPL3", "LICENSE.CC-BY-SA" `
             $package
+
+          $env:QT_QPA_PLATFORM = "offscreen"
+          & "$package\Fritzing.exe" `
+            -pp "$package\fritzing-parts" `
+            -db "$package\fritzing-parts\parts.db"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Fritzing parts database creation failed."
+          }
 
           Compress-Archive -Path $package `
             -DestinationPath "$env:RUNNER_TEMP\Fritzing-Windows-x64.zip"
