@@ -36,7 +36,7 @@ jobs:
         with:
           version: ${{ env.QT_VERSION }}
           arch: ${{ env.QT_ARCH }}
-          modules: qtserialport qtsvg qt5compat
+          modules: qtserialport qt5compat
 
       - name: Install C++ dependencies
         shell: pwsh
