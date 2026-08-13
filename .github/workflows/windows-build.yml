@@ -50,7 +50,28 @@ jobs:
             boost:x64-windows `
             libgit2:x64-windows `
             zlib:x64-windows
+     
+      - name: Build QuaZip against installed Qt
+        shell: pwsh
+        run: |
+          $root = (Resolve-Path "$env:GITHUB_WORKSPACE\..\..").Path
+          $source = "$env:RUNNER_TEMP\quazip"
+          $build = "$env:RUNNER_TEMP\quazip-build"
+          $prefix = "$root\quazip-1.4"
 
+          git clone --depth 1 --branch v1.4 `
+            https://github.com/stachenov/quazip.git $source
+
+          cmake -S $source -B $build `
+            -DQUAZIP_QT_MAJOR_VERSION=6 `
+            -DQUAZIP_FETCH_LIBS=OFF `
+            -DQUAZIP_BZIP2=OFF `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR;C:\vcpkg\installed\x64-windows"
+
+          cmake --build $build --config Release --parallel
+          cmake --install $build --config Release --prefix $prefix
+          
       - name: Download Fritzing parts and build dependencies
         shell: pwsh
         run: |
@@ -91,10 +112,12 @@ jobs:
             -OutFile "$env:RUNNER_TEMP\ngspice.7z"
           & 7z x "$env:RUNNER_TEMP\ngspice.7z" "-o$root\ngspice-42" -y
 
-      - name: Adapt dependency paths for the GitHub runner
+           - name: Adapt dependency paths for the GitHub runner
+        shell: pwsh
         run: |
           @'
           VCPKG = $$(VCPKG_ROOT)/installed/x64-windows
+
           win32 {
               INCLUDEPATH += $$VCPKG/include
               LIBS += -L$$VCPKG/lib -lgit2
@@ -103,10 +126,20 @@ jobs:
 
           @'
           VCPKG = $$(VCPKG_ROOT)/installed/x64-windows
+
           win32 {
               INCLUDEPATH += $$VCPKG/include
           }
           '@ | Set-Content "pri/boostdetect.pri"
+
+          @'
+          QUAZIP = $$absolute_path(../../quazip-1.4)
+
+          win32 {
+              INCLUDEPATH += $$QUAZIP/include/QuaZip-Qt6-1.4
+              LIBS += -L$$QUAZIP/lib -lquazip1-qt6
+          }
+          '@ | Set-Content "pri/quazipdetect.pri"
 
       - name: Find ngspice files
         shell: pwsh
