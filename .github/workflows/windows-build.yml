@@ -52,7 +52,7 @@ jobs:
       - name: Download header-only and source dependencies
         shell: pwsh
         run: |
-          $root = (Resolve-Path "$env:GITHUB_WORKSPACE\..\..").Path
+          $root = (Resolve-Path "$env:GITHUB_WORKSPACE\..").Path
 
           $boostArchive = "$env:RUNNER_TEMP\boost_1_85_0.zip"
           & curl.exe --fail --location --retry 3 `
@@ -62,20 +62,20 @@ jobs:
             throw "Could not download Boost 1.85.0."
           }
 
-          $boostExtract = "$env:RUNNER_TEMP\boost-extract"
+          $boostExtract = "$env:RUNNER_TEMP\\boost-extract"
           Expand-Archive $boostArchive -DestinationPath $boostExtract
 
           $boostVersion = Get-ChildItem $boostExtract -Recurse -Filter version.hpp |
-            Where-Object { $_.FullName -like "*\boost\version.hpp" } |
+            Where-Object { $_.FullName -like "*\\boost\\version.hpp" } |
             Select-Object -First 1
           if (-not $boostVersion) {
             throw "Boost archive does not contain boost/version.hpp."
           }
 
           $boostSource = $boostVersion.Directory.Parent.FullName
-          $boostDestination = "$root\boost_1_85_0"
+          $boostDestination = "$root\\boost_1_85_0"
           Move-Item $boostSource $boostDestination
-          if (-not (Test-Path "$boostDestination\boost\version.hpp")) {
+          if (-not (Test-Path "$boostDestination\\boost\\version.hpp")) {
             throw "Boost was not placed in the expected directory."
           }
 
@@ -96,7 +96,7 @@ jobs:
       - name: Build QuaZip against installed Qt
         shell: pwsh
         run: |
-          $root = (Resolve-Path "$env:GITHUB_WORKSPACE\..\..").Path
+          $root = (Resolve-Path "$env:GITHUB_WORKSPACE\..").Path
           $source = "$env:RUNNER_TEMP\quazip"
           $build = "$env:RUNNER_TEMP\quazip-build"
           $prefix = "$root\quazip-1.4"
@@ -130,7 +130,7 @@ jobs:
       - name: Prepare Clipper 6.4.2
         shell: pwsh
         run: |
-          $root = (Resolve-Path "$env:GITHUB_WORKSPACE\..\..").Path
+          $root = (Resolve-Path "$env:GITHUB_WORKSPACE\..").Path
           $source = "$env:RUNNER_TEMP\clipper-source"
           $destination = "$root\Clipper1-6.4.2"
 
@@ -164,7 +164,7 @@ jobs:
       - name: Prepare ngspice 42
         shell: pwsh
         run: |
-          $root = (Resolve-Path "$env:GITHUB_WORKSPACE\..\..").Path
+          $root = (Resolve-Path "$env:GITHUB_WORKSPACE\..").Path
           $archive = "$env:RUNNER_TEMP\ngspice.7z"
           $extract = "$env:RUNNER_TEMP\ngspice-source"
           $destination = "$root\ngspice-42"
@@ -245,7 +245,7 @@ jobs:
       - name: Build Fritzing
         shell: pwsh
         run: |
-          $boostRoot = (Resolve-Path "$env:GITHUB_WORKSPACE\..\..\boost_1_85_0").Path -replace "\\", "/"
+          $boostRoot = (Resolve-Path "$env:GITHUB_WORKSPACE\\..\\boost_1_85_0").Path -replace "\\\\", "/"
           qmake phoenix.pro "QMAKE_TARGET.arch=x86_64" "boost_root=$boostRoot"
           if ($LASTEXITCODE -ne 0) {
             throw "Fritzing qmake configuration failed."
@@ -259,7 +259,7 @@ jobs:
       - name: Assemble portable application
         shell: pwsh
         run: |
-          $root = (Resolve-Path "$env:GITHUB_WORKSPACE\..\..").Path
+          $root = (Resolve-Path "$env:GITHUB_WORKSPACE\..").Path
           $release = Resolve-Path "..\release64"
           $package = "$env:RUNNER_TEMP\Fritzing-Windows-x64"
 
