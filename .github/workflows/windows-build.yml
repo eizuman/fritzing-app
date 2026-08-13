@@ -38,10 +38,15 @@ jobs:
           arch: ${{ env.QT_ARCH }}
           modules: qtserialport qt5compat
 
+      - name: Use the runner vcpkg installation
+        shell: pwsh
+        run: |
+          "VCPKG_ROOT=C:\vcpkg" | Out-File $env:GITHUB_ENV -Append
+
       - name: Install C++ dependencies
         shell: pwsh
         run: |
-          & "$env:VCPKG_ROOT\vcpkg.exe" install `
+          & "C:\vcpkg\vcpkg.exe" install `
             boost:x64-windows `
             libgit2:x64-windows `
             quazip[qt6]:x64-windows
