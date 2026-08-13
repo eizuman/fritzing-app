@@ -49,7 +49,7 @@ jobs:
           & "C:\vcpkg\vcpkg.exe" install `
             boost:x64-windows `
             libgit2:x64-windows `
-            quazip[qt6]:x64-windows
+            quazip:x64-windows
 
       - name: Download Fritzing parts and build dependencies
         shell: pwsh
