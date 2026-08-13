@@ -13,12 +13,13 @@ jobs:
   build:
     name: Windows x64
     runs-on: windows-2022
-    timeout-minutes: 120
+    timeout-minutes: 360
 
     env:
-      VCPKG_ROOT: C:\vcpkg
       QT_VERSION: 6.8.3
       QT_ARCH: win64_msvc2022_64
+      VCPKG_ROOT: C:\vcpkg
+      VCPKG_TRIPLET: x64-windows
 
     steps:
       - name: Check out Fritzing source
@@ -38,19 +39,30 @@ jobs:
           arch: ${{ env.QT_ARCH }}
           modules: qtserialport qt5compat
 
-      - name: Use the runner vcpkg installation
-        shell: pwsh
-        run: |
-          "VCPKG_ROOT=C:\vcpkg" | Out-File $env:GITHUB_ENV -Append
-
-      - name: Install C++ dependencies
+      - name: Install vcpkg dependencies
         shell: pwsh
         run: |
           & "C:\vcpkg\vcpkg.exe" install `
-            boost:x64-windows `
             libgit2:x64-windows `
             zlib:x64-windows
-     
+
+      - name: Download header-only and source dependencies
+        shell: pwsh
+        run: |
+          $root = (Resolve-Path "$env:GITHUB_WORKSPACE\..\..").Path
+
+          git clone --depth 1 --branch boost-1.85.0 `
+            https://github.com/boostorg/boost.git `
+            "$root\boost_1_85_0"
+
+          git clone --depth 1 --branch develop `
+            https://github.com/fritzing/fritzing-parts.git `
+            "$root\fritzing-parts"
+
+          git clone --depth 1 --branch v1.3.1 `
+            https://github.com/svgpp/svgpp.git `
+            "$root\svgpp-1.3.1"
+
       - name: Build QuaZip against installed Qt
         shell: pwsh
         run: |
@@ -71,48 +83,67 @@ jobs:
 
           cmake --build $build --config Release --parallel
           cmake --install $build --config Release --prefix $prefix
-          
-      - name: Download Fritzing parts and build dependencies
+
+      - name: Prepare Clipper 6.4.2
         shell: pwsh
         run: |
           $root = (Resolve-Path "$env:GITHUB_WORKSPACE\..\..").Path
-
-          git clone --depth 1 --branch develop `
-            https://github.com/fritzing/fritzing-parts.git `
-            "$root\fritzing-parts"
-
-          git clone --depth 1 --branch v1.3.1 `
-            https://github.com/svgpp/svgpp.git `
-            "$root\svgpp-1.3.1"
+          $archive = "$env:RUNNER_TEMP\clipper.zip"
+          $extract = "$env:RUNNER_TEMP\clipper-source"
+          $destination = "$root\Clipper1-6.4.2"
 
           Invoke-WebRequest `
             "https://sourceforge.net/projects/polyclipping/files/clipper_ver6.4.2.zip/download" `
-            -OutFile "$env:RUNNER_TEMP\clipper.zip"
-          Expand-Archive "$env:RUNNER_TEMP\clipper.zip" -DestinationPath "$root\Clipper1-6.4.2"
+            -OutFile $archive
+          Expand-Archive $archive -DestinationPath $extract -Force
 
-          $clipperCpp = Get-ChildItem "$root\Clipper1-6.4.2" -Recurse -Filter polyclipping.cpp |
+          $cpp = Get-ChildItem $extract -Recurse -Filter polyclipping.cpp |
             Select-Object -First 1
-          $clipperHeader = Get-ChildItem "$root\Clipper1-6.4.2" -Recurse -Filter clipper.hpp |
+          $header = Get-ChildItem $extract -Recurse -Filter clipper.hpp |
             Select-Object -First 1
-          if (-not $clipperCpp -or -not $clipperHeader) {
+          if (-not $cpp -or -not $header) {
             throw "Clipper 6.4.2 source files were not found."
           }
 
-          $clipperInclude = $clipperHeader.Directory.FullName
-          $clipperLib = "$root\Clipper1-6.4.2\lib"
-          New-Item -ItemType Directory -Force -Path $clipperLib | Out-Null
-          cl /nologo /std:c++20 /EHsc /O2 /c $clipperCpp.FullName `
-            /I $clipperInclude `
+          New-Item -ItemType Directory -Force `
+            -Path "$destination\include\polyclipping", "$destination\lib" | Out-Null
+          Copy-Item $header.FullName "$destination\include\polyclipping\clipper.hpp"
+
+          cl /nologo /std:c++20 /EHsc /O2 /c $cpp.FullName `
+            /I $cpp.Directory.FullName `
             /Fo"$env:RUNNER_TEMP\polyclipping.obj"
-          lib /nologo /OUT:"$clipperLib\polyclipping.lib" `
+          lib /nologo `
+            /OUT:"$destination\lib\polyclipping.lib" `
             "$env:RUNNER_TEMP\polyclipping.obj"
+
+      - name: Prepare ngspice 42
+        shell: pwsh
+        run: |
+          $root = (Resolve-Path "$env:GITHUB_WORKSPACE\..\..").Path
+          $archive = "$env:RUNNER_TEMP\ngspice.7z"
+          $extract = "$env:RUNNER_TEMP\ngspice-source"
+          $destination = "$root\ngspice-42"
 
           Invoke-WebRequest `
             "https://sourceforge.net/projects/ngspice/files/ng-spice-rework/old-releases/42/ngspice-42_dll_64.7z/download" `
-            -OutFile "$env:RUNNER_TEMP\ngspice.7z"
-          & 7z x "$env:RUNNER_TEMP\ngspice.7z" "-o$root\ngspice-42" -y
+            -OutFile $archive
+          & 7z x $archive "-o$extract" -y
 
-      - name: Adapt dependency paths for the GitHub runner
+          $header = Get-ChildItem $extract -Recurse -Filter sharedspice.h |
+            Select-Object -First 1
+          $dll = Get-ChildItem $extract -Recurse -Filter ngspice.dll |
+            Select-Object -First 1
+          if (-not $header -or -not $dll) {
+            throw "ngspice 42 headers or DLL were not found."
+          }
+
+          New-Item -ItemType Directory -Force `
+            -Path "$destination\include", "$destination\bin" | Out-Null
+          Copy-Item "$($header.Directory.Parent.FullName)\*" `
+            "$destination\include" -Recurse -Force
+          Copy-Item $dll.FullName "$destination\bin\ngspice.dll"
+
+      - name: Adapt dependency paths for GitHub runner
         shell: pwsh
         run: |
           @'
@@ -125,14 +156,6 @@ jobs:
           '@ | Set-Content "pri/libgit2detect.pri"
 
           @'
-          VCPKG = $$(VCPKG_ROOT)/installed/x64-windows
-
-          win32 {
-              INCLUDEPATH += $$VCPKG/include
-          }
-          '@ | Set-Content "pri/boostdetect.pri"
-
-          @'
           QUAZIP = $$absolute_path(../../quazip-1.4)
 
           win32 {
@@ -141,50 +164,28 @@ jobs:
           }
           '@ | Set-Content "pri/quazipdetect.pri"
 
-      - name: Find ngspice files
-        shell: pwsh
-        run: |
-          $root = (Resolve-Path "$env:GITHUB_WORKSPACE\..\..").Path
-          $ngspice = "$root\ngspice-42"
-
-          $header = Get-ChildItem $ngspice -Recurse -Filter sharedspice.h |
-            Select-Object -First 1
-          $dll = Get-ChildItem $ngspice -Recurse -Filter ngspice.dll |
-            Select-Object -First 1
-
-          if (-not $header -or -not $dll) {
-            throw "ngspice headers or DLL were not found."
-          }
-
-          "NGSPICE_INCLUDE=$($header.Directory.Parent.FullName)" |
-            Out-File $env:GITHUB_ENV -Append
-          "NGSPICE_DLL=$($dll.FullName)" |
-            Out-File $env:GITHUB_ENV -Append
-
       - name: Build Fritzing
         shell: pwsh
         run: |
-          @'
-          NGSPICE_INCLUDE = $$(NGSPICE_INCLUDE)
-          INCLUDEPATH += $$NGSPICE_INCLUDE
-          '@ | Set-Content "pri/spicedetect.pri"
-
           qmake phoenix.pro "QMAKE_TARGET.arch=x86_64"
           nmake release
 
       - name: Assemble portable application
         shell: pwsh
         run: |
+          $root = (Resolve-Path "$env:GITHUB_WORKSPACE\..\..").Path
           $release = Resolve-Path "..\release64"
           $package = "$env:RUNNER_TEMP\Fritzing-Windows-x64"
+
           New-Item -ItemType Directory -Force -Path $package | Out-Null
 
           Copy-Item "$release\Fritzing.exe" $package
           Copy-Item "translations" "$package\translations" -Recurse
           Copy-Item "sketches" "$package\sketches" -Recurse
           Copy-Item "help" "$package\help" -Recurse
-          Copy-Item "..\..\fritzing-parts" "$package\fritzing-parts" -Recurse
-          Copy-Item $env:NGSPICE_DLL "$package\ngspice.dll"
+          Copy-Item "$root\fritzing-parts" "$package\fritzing-parts" -Recurse
+          Copy-Item "$root\ngspice-42\bin\ngspice.dll" $package
+          Copy-Item "$root\quazip-1.4\bin\quazip1-qt6.dll" $package
 
           windeployqt "$package\Fritzing.exe" `
             --release `
@@ -193,10 +194,14 @@ jobs:
             --no-system-d3d-compiler `
             --no-opengl-sw
 
-          Copy-Item "README.md","INSTALL.txt","LICENSE.GPL3","LICENSE.CC-BY-SA" $package
+          Copy-Item "C:\vcpkg\installed\x64-windows\bin\*.dll" `
+            $package -Force
 
-          Compress-Archive -Path $package -DestinationPath `
-            "$env:RUNNER_TEMP\Fritzing-Windows-x64.zip"
+          Copy-Item "README.md", "INSTALL.txt", "LICENSE.GPL3", "LICENSE.CC-BY-SA" `
+            $package
+
+          Compress-Archive -Path $package `
+            -DestinationPath "$env:RUNNER_TEMP\Fritzing-Windows-x64.zip"
 
       - name: Upload Fritzing archive
         uses: actions/upload-artifact@v4
