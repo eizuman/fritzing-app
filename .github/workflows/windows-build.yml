@@ -49,7 +49,7 @@ jobs:
           & "C:\vcpkg\vcpkg.exe" install `
             boost:x64-windows `
             libgit2:x64-windows `
-            quazip:x64-windows
+            zlib:x64-windows
 
       - name: Download Fritzing parts and build dependencies
         shell: pwsh
@@ -92,25 +92,21 @@ jobs:
           & 7z x "$env:RUNNER_TEMP\ngspice.7z" "-o$root\ngspice-42" -y
 
       - name: Adapt dependency paths for the GitHub runner
-        shell: pwsh
         run: |
           @'
-          VCPKG_ROOT = $$(VCPKG_ROOT)
-
+          VCPKG = $$(VCPKG_ROOT)/installed/x64-windows
           win32 {
-              INCLUDEPATH += $$VCPKG_ROOT/include
-              LIBS += -L$$VCPKG_ROOT/lib -lgit2
+              INCLUDEPATH += $$VCPKG/include
+              LIBS += -L$$VCPKG/lib -lgit2
           }
           '@ | Set-Content "pri/libgit2detect.pri"
 
           @'
-          VCPKG_ROOT = $$(VCPKG_ROOT)
-
+          VCPKG = $$(VCPKG_ROOT)/installed/x64-windows
           win32 {
-              INCLUDEPATH += $$VCPKG_ROOT/include/QuaZip-Qt6-1.4
-              LIBS += -L$$VCPKG_ROOT/lib -lquazip1-qt6
+              INCLUDEPATH += $$VCPKG/include
           }
-          '@ | Set-Content "pri/quazipdetect.pri"
+          '@ | Set-Content "pri/boostdetect.pri"
 
       - name: Find ngspice files
         shell: pwsh
