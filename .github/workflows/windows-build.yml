@@ -88,29 +88,21 @@ jobs:
         shell: pwsh
         run: |
           $root = (Resolve-Path "$env:GITHUB_WORKSPACE\..\..").Path
-          $archive = "$env:RUNNER_TEMP\clipper.zip"
-          $extract = "$env:RUNNER_TEMP\clipper-source"
+          $source = "$env:RUNNER_TEMP\clipper-source"
           $destination = "$root\Clipper1-6.4.2"
 
-          Invoke-WebRequest `
-            "https://sourceforge.net/projects/polyclipping/files/clipper_ver6.4.2.zip/download" `
-            -OutFile $archive
-          Expand-Archive $archive -DestinationPath $extract -Force
+          git clone --depth 1 --branch 6.4.2 `
+            https://github.com/skyrpex/clipper.git $source
 
-          $cpp = Get-ChildItem $extract -Recurse -Filter polyclipping.cpp |
-            Select-Object -First 1
-          $header = Get-ChildItem $extract -Recurse -Filter clipper.hpp |
-            Select-Object -First 1
-          if (-not $cpp -or -not $header) {
-            throw "Clipper 6.4.2 source files were not found."
-          }
+          $cpp = "$source\cpp\clipper.cpp"
+          $header = "$source\cpp\clipper.hpp"
 
           New-Item -ItemType Directory -Force `
             -Path "$destination\include\polyclipping", "$destination\lib" | Out-Null
-          Copy-Item $header.FullName "$destination\include\polyclipping\clipper.hpp"
+          Copy-Item $header "$destination\include\polyclipping\clipper.hpp"
 
-          cl /nologo /std:c++20 /EHsc /O2 /c $cpp.FullName `
-            /I $cpp.Directory.FullName `
+          cl /nologo /std:c++20 /EHsc /O2 /c $cpp `
+            /I "$source\cpp" `
             /Fo"$env:RUNNER_TEMP\polyclipping.obj"
           lib /nologo `
             /OUT:"$destination\lib\polyclipping.lib" `
