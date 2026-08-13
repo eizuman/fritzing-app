@@ -115,25 +115,51 @@ jobs:
           $archive = "$env:RUNNER_TEMP\ngspice.7z"
           $extract = "$env:RUNNER_TEMP\ngspice-source"
           $destination = "$root\ngspice-42"
+          $path = "project/ngspice/ng-spice-rework/old-releases/42/ngspice-42_dll_64.7z"
 
-          Invoke-WebRequest `
-            "https://sourceforge.net/projects/ngspice/files/ng-spice-rework/old-releases/42/ngspice-42_dll_64.7z/download" `
-            -OutFile $archive
+          $mirrors = @(
+            "https://phoenixnap.dl.sourceforge.net/$path",
+            "https://netix.dl.sourceforge.net/$path",
+            "https://versaweb.dl.sourceforge.net/$path"
+          )
+
+          $downloaded = $false
+          foreach ($url in $mirrors) {
+            Remove-Item $archive -Force -ErrorAction SilentlyContinue
+
+            & curl.exe --fail --location --retry 3 --connect-timeout 30 `
+              --output $archive $url
+
+            if ($LASTEXITCODE -eq 0 -and (Test-Path $archive)) {
+              & 7z t $archive | Out-Null
+              if ($LASTEXITCODE -eq 0) {
+                $downloaded = $true
+                break
+              }
+            }
+          }
+
+          if (-not $downloaded) {
+            throw "Could not download a valid ngspice 42 archive."
+          }
+
           & 7z x $archive "-o$extract" -y
 
           $header = Get-ChildItem $extract -Recurse -Filter sharedspice.h |
             Select-Object -First 1
           $dll = Get-ChildItem $extract -Recurse -Filter ngspice.dll |
             Select-Object -First 1
+
           if (-not $header -or -not $dll) {
             throw "ngspice 42 headers or DLL were not found."
           }
 
           New-Item -ItemType Directory -Force `
             -Path "$destination\include", "$destination\bin" | Out-Null
+
           Copy-Item "$($header.Directory.Parent.FullName)\*" `
             "$destination\include" -Recurse -Force
-          Copy-Item $dll.FullName "$destination\bin\ngspice.dll"
+          Copy-Item $dll.FullName "$destination\bin\ngspice.dll""
 
       - name: Adapt dependency paths for GitHub runner
         shell: pwsh
