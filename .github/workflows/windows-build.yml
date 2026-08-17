@@ -278,7 +278,6 @@ jobs:
             "sqldrivers\qsqlite.dll",
             "imageformats\qjpeg.dll",
             "imageformats\qsvg.dll",
-            "printsupport\windowsprintersupport.dll"
           )) {
             $source = Join-Path $qtPlugins $plugin
             $destination = Join-Path $package (Split-Path $plugin -Parent)
