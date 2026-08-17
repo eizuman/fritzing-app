@@ -136,7 +136,7 @@ jobs:
             -Path "$destination\include\polyclipping", "$destination\lib" | Out-Null
           Copy-Item $header "$destination\include\polyclipping\clipper.hpp"
 
-          cl /nologo /std:c++20 /EHsc /O2 /c $cpp `
+          cl /nologo /std:c++20 /EHsc /O2 /MD /c $cpp `
             /I "$source\cpp" `
             /Fo"$env:RUNNER_TEMP\polyclipping.obj"
           if ($LASTEXITCODE -ne 0) {
@@ -272,11 +272,23 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw "Qt runtime deployment failed."
           }
-
+          
+          $qtPlugins = "$env:QT_ROOT_DIR\plugins"
+          foreach ($plugin in @(
+            "sqldrivers\qsqlite.dll",
+            "imageformats\qjpeg.dll",
+            "imageformats\qsvg.dll",
+            "printsupport\windowsprintersupport.dll"
+          )) {
+            $source = Join-Path $qtPlugins $plugin
+            $destination = Join-Path $package (Split-Path $plugin -Parent)
+            New-Item -ItemType Directory -Force -Path $destination | Out-Null
+            Copy-Item $source $destination -Force
+          }
           Copy-Item "C:\vcpkg\installed\x64-windows\bin\*.dll" `
             $package -Force
 
-          Copy-Item "README.md", "INSTALL.txt", "LICENSE.GPL3", "LICENSE.CC-BY-SA" `
+          Copy-Item "README.md", "INSTALL.txt", "LICENSE.GPL2", "LICENSE.GPL3", "LICENSE.CC-BY-SA" `
             $package
 
           $env:QT_QPA_PLATFORM = "offscreen"
