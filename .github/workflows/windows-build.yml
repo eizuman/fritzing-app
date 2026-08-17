@@ -273,6 +273,9 @@ jobs:
             throw "Qt runtime deployment failed."
           }
           
+          Copy-Item "$env:QT_ROOT_DIR\bin\Qt6*.dll" $package -Force
+          Copy-Item "$env:QT_ROOT_DIR\bin\icu*.dll" $package -Force -ErrorAction SilentlyContinue
+          
           $qtPlugins = "$env:QT_ROOT_DIR\plugins"
           foreach ($plugin in @(
             "sqldrivers\qsqlite.dll",
