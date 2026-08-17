@@ -277,7 +277,7 @@ jobs:
           foreach ($plugin in @(
             "sqldrivers\qsqlite.dll",
             "imageformats\qjpeg.dll",
-            "imageformats\qsvg.dll",
+            "imageformats\qsvg.dll"
           )) {
             $source = Join-Path $qtPlugins $plugin
             $destination = Join-Path $package (Split-Path $plugin -Parent)
